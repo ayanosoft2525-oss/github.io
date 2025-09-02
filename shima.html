@@ -2,173 +2,144 @@
 <html lang="ja">
 <head>
   <meta charset="UTF-8" />
-  <title>島香純 - 投手記録</title>
+  <title>島香純 - 投手記録（クラウド連携）</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <style>
     :root { --blue:#1d6fa5; --light:#f6fbff; --line:#e5eef6; }
     body { font-family: system-ui, -apple-system, "Hiragino Sans", Arial, sans-serif;
-           margin: 0; background: var(--light); color:#223; }
-    header { padding: 16px 20px; background:#fff; border-bottom:1px solid var(--line);
-             position: sticky; top:0; }
-    h1 { font-size: 20px; margin:0; }
-    main { max-width: 920px; margin: 20px auto; padding: 0 16px 40px; }
-    .row { display:flex; gap:16px; flex-wrap:wrap; align-items: center; }
+           margin:0; background:var(--light); color:#223; }
+    header { padding:16px 20px; background:#fff; border-bottom:1px solid var(--line); position:sticky; top:0; }
+    h1 { font-size:20px; margin:0; }
+    main { max-width:920px; margin:20px auto; padding:0 16px 40px; }
+    .row { display:flex; gap:16px; flex-wrap:wrap; align-items:center; }
     .card { background:#fff; border:1px solid var(--line); border-radius:12px; padding:16px; }
-    .actions .btn { appearance:none; border:0; padding:12px 16px; border-radius:10px; 
-                    background: var(--blue); color:#fff; font-weight:600; cursor:pointer; }
-    .actions .btn:disabled { opacity:.5; cursor:not-allowed; }
+    .btn { appearance:none; border:0; padding:12px 16px; border-radius:10px; background:var(--blue); color:#fff; font-weight:600; cursor:pointer; }
+    .btn:disabled { opacity:.5; cursor:not-allowed; }
     .field { display:flex; align-items:center; gap:12px; }
     input[type="date"] { padding:10px 12px; border-radius:10px; border:1px solid var(--line); background:#fff; }
-    .thumbs { display:grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap:12px; margin-top:12px; }
-    .thumb { position:relative; border:1px solid var(--line); border-radius:10px; overflow:hidden; background:#fff; }
+    .thumbs { display:grid; grid-template-columns:repeat(auto-fill,minmax(160px,1fr)); gap:12px; margin-top:12px; }
+    .thumb { border:1px solid var(--line); border-radius:10px; overflow:hidden; background:#fff; }
     .thumb img { width:100%; height:140px; object-fit:cover; display:block; }
-    .thumb .meta { font-size:12px; padding:6px 8px; display:flex; justify-content:space-between; align-items:center; }
-    .link { color: var(--blue); text-decoration:none; font-weight:600; cursor:pointer; }
-    .muted { color:#667; font-size:13px; }
+    .meta { font-size:12px; padding:6px 8px; display:flex; justify-content:space-between; align-items:center; }
     .danger { color:#b33; cursor:pointer; }
+    .muted { color:#667; font-size:13px; }
   </style>
 </head>
 <body>
-  <header>
-    <h1>島香純（投手）｜画像記録</h1>
-  </header>
+  <header><h1>島香純（投手）｜画像記録</h1></header>
 
   <main>
-    <!-- 1) アクション -->
-    <section class="card actions">
+    <section class="card">
       <div class="row">
         <button id="openPicker" class="btn">📅 日付を選んで画像を追加</button>
-        <span class="muted">ボタン → 日付選択 → 画像を選ぶ と保存されます（端末ローカル）</span>
+        <span class="muted">日付 → 画像を選ぶ とクラウド保存されます（共有）</span>
       </div>
-
       <div id="pickerArea" style="display:none; margin-top:12px;" class="row">
         <div class="field">
           <label for="dateInput">日付：</label>
           <input id="dateInput" type="date" />
         </div>
         <div class="field">
-          <input id="fileInput" type="file" accept="image/*" style="display:none;" />
+          <input id="fileInput" type="file" accept="image/*" style="display:none;">
           <button id="chooseFile" class="btn" disabled>画像を選ぶ</button>
         </div>
       </div>
     </section>
 
-    <!-- 2) ギャラリー -->
     <section class="card" style="margin-top:16px;">
       <div class="row" style="justify-content:space-between;">
-        <h2 style="margin:0; font-size:18px;">📚 保存済み（この端末）</h2>
-        <span class="muted">クリックで原寸表示／🗑で削除</span>
+        <h2 style="margin:0; font-size:18px;">📚 共有ギャラリー</h2>
+        <span class="muted">クリックで原寸表示</span>
       </div>
       <div id="gallery" class="thumbs"></div>
     </section>
-
-    <p class="muted" style="margin-top:12px;">
-      ※ GitHub Pages はサーバー保存ができないため、画像は各端末の
-      <b>localStorage</b> に暗号化なしで保存されます。共有保存にしたい場合は
-      <span class="link" id="askCloud">クラウド連携版</span>をご提案します。
-    </p>
   </main>
 
+  <!-- supabase-js v2 -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script>
-    // ===== 設定（ページごとに変更）=====
-    const PLAYER_ID   = "shima";     // 半角英数字で一意
+    // ==== 設定（必ず自分の値に置き換え）====
+    const SUPABASE_URL = "https://YOUR-PROJECT-REF.supabase.co";
+    const SUPABASE_KEY = "YOUR-ANON-PUBLIC-KEY";
+    const BUCKET = "softball-images";
+
+    const PLAYER_ID = "shima";
     const PLAYER_NAME = "島香純";
 
-    // ===== 便利関数 =====
-    const keyFor = (dateStr) => `tsukuba_softball:${PLAYER_ID}:${dateStr}`;
-    const format = (d) => d.replaceAll("-", "/");
+    const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-    // ===== 要素参照 =====
+    // ==== UI ====
     const openPicker = document.getElementById("openPicker");
     const pickerArea = document.getElementById("pickerArea");
     const dateInput  = document.getElementById("dateInput");
     const chooseFile = document.getElementById("chooseFile");
     const fileInput  = document.getElementById("fileInput");
     const gallery    = document.getElementById("gallery");
-    const askCloud   = document.getElementById("askCloud");
 
-    // ===== イベント =====
-    openPicker.addEventListener("click", () => {
+    openPicker.addEventListener("click", ()=> {
       pickerArea.style.display = pickerArea.style.display === "none" ? "block" : "none";
     });
-
-    dateInput.addEventListener("change", () => {
-      chooseFile.disabled = !dateInput.value;
-    });
-
-    chooseFile.addEventListener("click", () => {
-      if (!dateInput.value) return;
-      fileInput.click();
-    });
+    dateInput.addEventListener("change", ()=> chooseFile.disabled = !dateInput.value);
+    chooseFile.addEventListener("click", ()=> fileInput.click());
 
     fileInput.addEventListener("change", async (e) => {
       const file = e.target.files?.[0];
       if (!file || !dateInput.value) return;
 
-      const reader = new FileReader();
-      reader.onload = () => {
-        const dataURL = reader.result;
-        const key = keyFor(dateInput.value);
+      const ymd = dateInput.value; // YYYY-MM-DD
+      const path = `${PLAYER_ID}/${ymd}/${Date.now()}_${file.name}`;
 
-        const existing = JSON.parse(localStorage.getItem(key) || "[]");
-        existing.push({ dataURL, ts: Date.now(), filename: file.name });
-        localStorage.setItem(key, JSON.stringify(existing));
+      // 1) Storageへアップロード
+      const { error: upErr } = await sb.storage.from(BUCKET).upload(path, file, {
+        cacheControl: "3600",
+        upsert: false
+      });
+      if (upErr) { alert("アップロード失敗: " + upErr.message); return; }
 
-        fileInput.value = "";
-        render();
-        alert(`${format(dateInput.value)} に画像を保存しました（この端末のみ）`);
-      };
-      reader.readAsDataURL(file);
+      // 2) 公開URLを取得
+      const { data: pub } = sb.storage.from(BUCKET).getPublicUrl(path);
+
+      // 3) DBへメタ保存
+      const { error: insErr } = await sb.from("images").insert({
+        player: PLAYER_ID, date: ymd, path: path, url: pub.publicUrl
+      });
+      if (insErr) { alert("DB登録失敗: " + insErr.message); return; }
+
+      fileInput.value = "";
+      await loadGallery();
+      alert(`${ymd} に画像を保存しました（共有）`);
     });
 
-    askCloud.addEventListener("click", () => {
-      alert("Google Drive / Firebase / Supabase 連携で、チーム共有保存も可能です。必要なら実装コードをお送りします。");
-    });
+    // ギャラリー表示
+    async function loadGallery() {
+      const { data, error } = await sb
+        .from("images")
+        .select("*")
+        .eq("player", PLAYER_ID)
+        .order("date", { ascending: false })
+        .order("id", { ascending: false });
 
-    // ===== 表示更新 =====
-    function render() {
-      const items = [];
-      for (let i = 0; i < localStorage.length; i++) {
-        const k = localStorage.key(i);
-        if (!k.startsWith(`tsukuba_softball:${PLAYER_ID}:`)) continue;
-        const dateStr = k.split(":").pop();
-        const imgs = JSON.parse(localStorage.getItem(k) || "[]");
-        imgs.forEach(rec => items.push({ key:k, date:dateStr, ...rec }));
-      }
-      items.sort((a,b) => b.ts - a.ts);
+      if (error) { console.error(error); return; }
 
       gallery.innerHTML = "";
-      if (items.length === 0) {
-        gallery.innerHTML = `<div class="muted">まだ画像がありません。上のボタンから追加してください。</div>`;
+      if (!data || data.length === 0) {
+        gallery.innerHTML = `<div class="muted">まだ画像がありません。</div>`;
         return;
       }
-      for (const it of items) {
-        const div = document.createElement("div");
-        div.className = "thumb";
-        div.innerHTML = `
-          <a href="${it.dataURL}" target="_blank" rel="noopener">
-            <img src="${it.dataURL}" alt="${PLAYER_NAME}" loading="lazy" />
+      for (const item of data) {
+        const el = document.createElement("div");
+        el.className = "thumb";
+        el.innerHTML = `
+          <a href="${item.url}" target="_blank" rel="noopener">
+            <img src="${item.url}" alt="${PLAYER_NAME}">
           </a>
-          <div class="meta">
-            <span>${format(it.date)}</span>
-            <span class="danger" title="この画像だけ削除" role="button">🗑</span>
-          </div>
+          <div class="meta"><span>${item.date}</span></div>
         `;
-        div.querySelector(".danger").addEventListener("click", () => {
-          const arr = JSON.parse(localStorage.getItem(it.key) || "[]");
-          const idx = arr.findIndex(r => r.ts === it.ts);
-          if (idx >= 0) {
-            arr.splice(idx, 1);
-            if (arr.length === 0) localStorage.removeItem(it.key);
-            else localStorage.setItem(it.key, JSON.stringify(arr));
-            render();
-          }
-        });
-        gallery.appendChild(div);
+        gallery.appendChild(el);
       }
     }
 
-    render();
+    loadGallery();
   </script>
 </body>
 </html>
