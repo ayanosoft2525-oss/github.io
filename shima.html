@@ -21,7 +21,6 @@
     .thumb { border:1px solid var(--line); border-radius:10px; overflow:hidden; background:#fff; }
     .thumb img { width:100%; height:140px; object-fit:cover; display:block; }
     .meta { font-size:12px; padding:6px 8px; display:flex; justify-content:space-between; align-items:center; }
-    .danger { color:#b33; cursor:pointer; }
     .muted { color:#667; font-size:13px; }
   </style>
 </head>
@@ -58,17 +57,17 @@
   <!-- supabase-js v2 -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script>
-    // ==== 設定（必ず自分の値に置き換え）====
-    const SUPABASE_URL = "https://YOUR-PROJECT-REF.supabase.co";
-    const SUPABASE_KEY = "YOUR-ANON-PUBLIC-KEY";
-    const BUCKET = "softball-images";
+    // ==== ここを自分の値に置き換える！ ====
+    const SUPABASE_URL = "https://YOUR-REF.supabase.co";     // ← Project URL
+    const SUPABASE_KEY = "YOUR-ANON-PUBLIC-KEY";              // ← anon public key
+    const BUCKET = "softball-images";                         // ← バケット名
 
     const PLAYER_ID = "shima";
     const PLAYER_NAME = "島香純";
 
-    const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+    const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-    // ==== UI ====
+    // ==== UI 要素 ====
     const openPicker = document.getElementById("openPicker");
     const pickerArea = document.getElementById("pickerArea");
     const dateInput  = document.getElementById("dateInput");
@@ -76,6 +75,7 @@
     const fileInput  = document.getElementById("fileInput");
     const gallery    = document.getElementById("gallery");
 
+    // ==== イベント ====
     openPicker.addEventListener("click", ()=> {
       pickerArea.style.display = pickerArea.style.display === "none" ? "block" : "none";
     });
@@ -89,28 +89,33 @@
       const ymd = dateInput.value; // YYYY-MM-DD
       const path = `${PLAYER_ID}/${ymd}/${Date.now()}_${file.name}`;
 
-      // 1) Storageへアップロード
-      const { error: upErr } = await sb.storage.from(BUCKET).upload(path, file, {
-        cacheControl: "3600",
-        upsert: false
-      });
-      if (upErr) { alert("アップロード失敗: " + upErr.message); return; }
+      try {
+        // 1) Storageへアップロード
+        const { error: upErr } = await sb.storage.from(BUCKET).upload(path, file, {
+          cacheControl: "3600",
+          upsert: false
+        });
+        if (upErr) throw upErr;
 
-      // 2) 公開URLを取得
-      const { data: pub } = sb.storage.from(BUCKET).getPublicUrl(path);
+        // 2) 公開URLを取得
+        const { data: pub } = sb.storage.from(BUCKET).getPublicUrl(path);
 
-      // 3) DBへメタ保存
-      const { error: insErr } = await sb.from("images").insert({
-        player: PLAYER_ID, date: ymd, path: path, url: pub.publicUrl
-      });
-      if (insErr) { alert("DB登録失敗: " + insErr.message); return; }
+        // 3) DBへメタ保存
+        const { error: insErr } = await sb.from("images").insert({
+          player: PLAYER_ID, date: ymd, path: path, url: pub.publicUrl
+        });
+        if (insErr) throw insErr;
 
-      fileInput.value = "";
-      await loadGallery();
-      alert(`${ymd} に画像を保存しました（共有）`);
+        fileInput.value = "";
+        await loadGallery();
+        alert(`${ymd} に画像を保存しました（共有）`);
+      } catch (e) {
+        console.error("Upload failed:", e);
+        alert("アップロード失敗: " + (e.message || e.toString()));
+      }
     });
 
-    // ギャラリー表示
+    // ==== ギャラリー描画 ====
     async function loadGallery() {
       const { data, error } = await sb
         .from("images")
@@ -138,6 +143,12 @@
         gallery.appendChild(el);
       }
     }
+
+    // 接続テスト（失敗時はコンソールに出ます）
+    (async () => {
+      const { error } = await sb.from("images").select("id").limit(1);
+      if (error) console.error("DB接続エラー:", error);
+    })();
 
     loadGallery();
   </script>
